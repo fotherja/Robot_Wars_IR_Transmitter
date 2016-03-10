@@ -1,12 +1,16 @@
 /* IR Transmitter program.
  *  
  *  To Do:
- *  Allow for PPM input for control if no GC is detected.
+ *  Allow for PPM input for control if no GC is detected. - Would be very handy!!
  *  The bit toggled by the A button could be modulated in itself to control the speed of the weapon...   
  *  Could include configurable IR frequencies by change of a define, or better, by using DIP switches like Josh.
  *  
  *  PIN Requirements:
- *  
+ *    The pin-out for the Gamecube wires can be found here (Along with the N64 controller pinouts):
+ *    http://svn.navi.cx/misc/trunk/wasabi/devices/cube64/hardware/cube64-basic.pdf
+ *    
+ *    Arduino Digital I/O 2: Gamecube controller serial line pulled high to 3.3v via a 1K resistor
+ *    Simples
  *  
  *  DESCRIPTION:
  *  - Transmits using Manchester encoding
