@@ -1,16 +1,43 @@
 /* IR Transmitter program.
  *  
+ *  To Do:
+ *  Allow for PPM input for control if no GC is detected.
+ *  The bit toggled by the A button could be modulated in itself to control the speed of the weapon...   
+ *  Could include configurable IR frequencies by change of a define, or better, by using DIP switches like Josh.
+ *  
+ *  PIN Requirements:
+ *  
+ *  
+ *  DESCRIPTION:
  *  - Transmits using Manchester encoding
- *    # each bit period is 0.8ms but this includes 2 sub-bits of the manchester code.  
+ *    # each bit period is 0.8ms but this includes 2 sub-bits of the manchester code:  
  *    
- *    Controls:
+ *            1                        0
+ *    --------                          --------
+ *            |                        |  
+ *            |                        |
+ *            |                        |
+ *             --------        --------
+ *   <-----0.8ms------>        <-----0.8ms------>          
+ *               
+ *    We send a start bit which is a little different for channel 1 or 2:
+ *      - Channel 1: 200us on, 600us off
+ *      - Channel 2: 600us on, 200us off             
+ *    
+ *    So all in all, we send 21 bits of data: 1 start, 8 angle, 8 speed, 4 data bits.
+ *    
+ *    Gamecube Controls:
  *    Main Joystick sets Bot direction
- *    L/R Keypad adjusts for drift, U/D adjusts for speed
- *    Start button - recalibrates angle
- *    C  stick does either Speed & L/R Rate if main joysick centered or just speed
+ *    Trigger sliders set speed.
  *    
- *    Z Resets the trims to zero      CHANGE SO THAT IT'S BOTH TRIGGER BUTTONS PRESSED THAT RESETS TRIM. B,Y,X INCREASE PID CONSTANTS RESPECTIVELY, OR DECREASE IF R IS PRESSED.
- *    A activates Weapon 
+ *    L/R Keypad adjusts for drift, U/D adjusts for speed drift
+ *    Start button - recalibrates angle
+ *    
+ *    C  stick does either Speed & L/R Rate if main joysick centered or just speed if main joystick being used
+ *    Both trigger buttons depressed resets trim
+ *    
+ *    B,Y,X Increase PID parameters respectively. This is continuous whilst pressed. If R is pressed at the same time the values are decreased.
+ *    A activates Weapon
  *    
  */
  
@@ -70,11 +97,9 @@ const int PPM_Rx_Good_Pin = 10;
 
 //-----Globals----------------------------------------------
 // 8 bytes of data that we get from the controller. This is a global variable (not a struct definition)
-static struct {
-    // bits: 0, 0, 0, start, y, x, b, a
-    unsigned char data1;
-    // bits: 1, L, R, Z, Dup, Ddown, Dright, Dleft
-    unsigned char data2;
+static struct {    
+    unsigned char data1;                                                                      // bits: 0, 0, 0, start, y, x, b, a    
+    unsigned char data2;                                                                      // bits: 1, L, R, Z, Dup, Ddown, Dright, Dleft
     unsigned char stick_x;
     unsigned char stick_y;
     unsigned char cstick_x;
@@ -106,7 +131,7 @@ void setup()
   Serial.begin(115200);  
   
   // Configure timer to output 38KHz on IR pin
-  ICR1 = 210;                                                                 //Freq = Clk / (2 * (ICR1 + 1)                                                         
+  ICR1 = 210;                                                                                 //Freq = Clk / (2 * (ICR1 + 1)                                                         
   TCCR1A = 0b01000000;
   TCCR1B = 0b00011001;
     
@@ -516,7 +541,7 @@ void loop()
  *        - Calculating an angle vector from the joystick
  *        - Re-zeroing this angle vector when the start button is pressed
  *        - Accounting for drift by using the L/R arrow keys.
- *        - If Joystick centred then ignore Joystick angle since these will be erratic
+ *        - If Joystick ~centred then ignore Joystick angle since these will be erratic
  *                
  *        - Encoding the trigger slidders as a speed scalar
  *        - Encoding the A button as a weapon activation button.
@@ -542,7 +567,7 @@ void loop()
   unsigned long IR_Tx_Data; 
     
 // ---Button stuff-----------------------------------------------------------------------  
-  // If Z is pressed reset the trims
+  // If both triggers are pressed reset the trims
   if(bitRead(gc_status.data2, L_BUTTON) && bitRead(gc_status.data2, R_BUTTON)) {  
     Speed_Offset = 0.0;
     Drift_Compensation = 0.0;
