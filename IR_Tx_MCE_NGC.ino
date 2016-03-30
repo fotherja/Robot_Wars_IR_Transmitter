@@ -34,11 +34,11 @@
  *    Main Joystick sets Bot direction
  *    Trigger sliders set speed.
  *    
- *    L/R Keypad adjusts for drift, U/D adjusts for speed drift
+ *    L/R Keypad adjusts for rotation drift, U/D adjusts for speed drift
  *    Start button - recalibrates angle
  *    
- *    C  stick does either Speed & L/R Rate if main joysick centered or just speed if main joystick being used
- *    Both trigger buttons depressed resets trim
+ *    C stick does either Speed & L/R Rate if main joysick centered or just speed if main joystick being used
+ *    Both trigger buttons depressed resets trims
  *    
  *    B,Y,X Increase PID parameters respectively. This is continuous whilst pressed. If R is pressed at the same time the values are decreased.
  *    A activates Weapon
