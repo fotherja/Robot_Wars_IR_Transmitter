@@ -103,13 +103,13 @@ const int           L_ARROW_BUTTON          = 0;
 #define             SCLAE_FACTOR              0.75
 
 //-----Pin Defines------------------------------------------
-#define     PPM_Pin     3                                                 // If PPM input pin
-#define     IR_Pin      10                                                // IR output pin                              
+#define     PPM_Pin     3                                                               // If PPM input pin
+#define     IR_Pin      10                                                              // IR output pin                              
 
-#define     DIP_1       6                                                 // On - RF Transmitter, Off - Game Cube
-#define     DIP_2       7                                                 // On - Perform RF Joystick range check test on startup
-#define     DIP_3       8                                                 // On - 56KHz, Off - 38KHz
-#define     DIP_4       9                                                 // On - Channel 2, Off - Channel 1
+#define     DIP_1       6                                                               // On - RF Transmitter, Off - Game Cube
+#define     DIP_2       7                                                               // On - Perform RF Joystick range check test on startup
+#define     DIP_3       8                                                               // On - 56KHz, Off - 38KHz
+#define     DIP_4       9                                                               // On - Channel 2, Off - Channel 1
 
 #define     LED_RED     12
 #define     LED_GREEN   A3
@@ -127,8 +127,8 @@ const int           L_ARROW_BUTTON          = 0;
 //-----Globals----------------------------------------------
 // 8 bytes of data that we get from the controller. This is a global variable (not a struct definition)
 static struct {    
-    unsigned char data1;                                                    // bits: 0, 0, 0, start, y, x, b, a    
-    unsigned char data2;                                                    // bits: 1, L, R, Z, Dup, Ddown, Dright, Dleft
+    unsigned char data1;                                                                // bits: 0, 0, 0, start, y, x, b, a    
+    unsigned char data2;                                                                // bits: 1, L, R, Z, Dup, Ddown, Dright, Dleft
     unsigned char stick_x;
     unsigned char stick_y;
     unsigned char cstick_x;
@@ -171,8 +171,8 @@ void setup()
   // Configure Pins
   pinMode(IR_Pin, INPUT);    
 
-  digitalWrite(GC_PIN, LOW);                                                // Communication with game cube controller on this pin
-  pinMode(GC_PIN, INPUT);                                                   // Don't remove these lines, we don't want to push +5V to the controller
+  digitalWrite(GC_PIN, LOW);                                                            // Communication with game cube controller on this pin
+  pinMode(GC_PIN, INPUT);                                                               // Don't remove these lines, we don't want to push +5V to the controller
 
   pinMode(DIP_1, INPUT_PULLUP); pinMode(DIP_2, INPUT_PULLUP);
   pinMode(DIP_3, INPUT_PULLUP); pinMode(DIP_4, INPUT_PULLUP);
@@ -181,11 +181,11 @@ void setup()
   
   // Configure timer to output 38KHz or 56KHz IR pin depending on DIP_3
   if(digitalRead(DIP_3) == 1)  {
-  ICR1 = 210;                                                               // 38KHz - Freq = Clk / (2 * (ICR1 + 1)   
+  ICR1 = 210;                                                                           // 38KHz - Freq = Clk / (2 * (ICR1 + 1)   
   Serial.println("Using 38KHz...");
   }  
   else  {
-  ICR1 = 142;                                                               // 56KHz  
+  ICR1 = 142;                                                                           // 56KHz  
   Serial.println("Using 56KHz...");
   }    
   TCCR1A = 0b00010000;
@@ -707,14 +707,16 @@ void loop()
   Serial.print(Speed_Tx, DEC);
 
   IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
-  IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16); 
-  IR_Tx_Data |= ((PID_Adjust_Buttons & 0b111) << 12);
-  bitWrite(IR_Tx_Data, 15, bitRead(gc_status.data1, A_BUTTON));
+  IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
+  bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet
+    
+  //IR_Tx_Data |= ((PID_Adjust_Buttons & 0b111) << 12);
+  //bitWrite(IR_Tx_Data, 15, bitRead(gc_status.data1, A_BUTTON));
 
   Serial.print(", IR_Tx_Data:");
   Serial.println(IR_Tx_Data, BIN);
     
-  while(!Transmit(IR_Tx_Data, 20, BIT_PERIOD, SIGNAL_PERIOD, 1)) {}     
+  while(!Transmit(IR_Tx_Data, 17, BIT_PERIOD, SIGNAL_PERIOD, 1)) {}     
 }
 
 //------------------------------------------------------------------------------------
@@ -723,14 +725,14 @@ void Configure_PPM_Input()
   pinMode(PPM_Pin, INPUT);
   attachInterrupt(digitalPinToInterrupt(PPM_Pin), Interrupt_Fxn, CHANGE);
     
-  if(digitalRead(DIP_2) == 0)                                                         // Perform range calibration
+  if(digitalRead(DIP_2) == 0)                                                           // Perform range calibration
   {
     delay(100);
-    PPM_Channel.Ch[0] = 0; PPM_Channel.Ch[1] = 0; PPM_Channel.Ch[2] = 0;                                    // Clear all channel values to see if they're being updated
+    PPM_Channel.Ch[0] = 0; PPM_Channel.Ch[1] = 0; PPM_Channel.Ch[2] = 0;                // Clear all channel values to see if they're being updated
     PPM_Channel.Ch[3] = 0; PPM_Channel.Ch[4] = 0; PPM_Channel.Ch[5] = 0;    
     delay(100);
     
-    if(!PPM_Channel.Ch[0] && !PPM_Channel.Ch[1] && !PPM_Channel.Ch[2] && !PPM_Channel.Ch[3])                          // If they're not being updated... Keep looping
+    if(!PPM_Channel.Ch[0] && !PPM_Channel.Ch[1] && !PPM_Channel.Ch[2] && !PPM_Channel.Ch[3])      // If they're not being updated... Keep looping
     {
       Serial.println("We're not receiving a PPM signal at the moment!");
       Configure_PPM_Input();
@@ -749,7 +751,7 @@ void Configure_PPM_Input()
     {
       for(int i = 0;i < 6;i++)
       {     
-      if(millis() % 200 == 0)                                                       // Toggle LED every 150ms
+      if(millis() % 200 == 0)                                                           // Toggle LED every 150ms
       {
         digitalWrite(LED_GREEN, !digitalRead(LED_GREEN));
       }
@@ -828,7 +830,7 @@ void UsePPM()
 
   if(JoyStick_Sq_Magnitude > 400.0)
   {
-    //Yaw_Setpoint -= JoyStick_Angle;                                                     // Remove old values
+    //Yaw_Setpoint -= JoyStick_Angle;                                                   // Remove old values
     JoyStick_Angle = atan2(Centered_ChX, Centered_ChY) * (180/PI);                                      // Calculate new value
     Yaw_Setpoint = JoyStick_Angle;                                                      // Add it in
   }   
@@ -849,11 +851,12 @@ void UsePPM()
 
   IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
   IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
+  bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet
 
   Serial.print(", IR_Tx_Data:");
   Serial.println(IR_Tx_Data, BIN);
 
-  while(!Transmit(IR_Tx_Data, 20, BIT_PERIOD, SIGNAL_PERIOD, digitalRead(DIP_4))) {}    
+  while(!Transmit(IR_Tx_Data, 17, BIT_PERIOD, SIGNAL_PERIOD, digitalRead(DIP_4))) {}    
   }
 }
 
