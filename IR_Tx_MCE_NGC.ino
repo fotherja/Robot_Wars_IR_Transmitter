@@ -7,7 +7,7 @@ Configurable IR transmission frequency and channel.
   - LED Feedback, Low battery detection
   - Allow for transmission of a special packet that sets the PWM output on the GMC. Interrupt based or something 
   - Advanced: Get time division multiplexing working by addition of an IR receiver onto Josh's board.
-  - Make rising edge immediate! (like Josh)
+  - Make rising edge immediate! (like Josh). Use a pin register define instead of digitalWrite/Mode etc
   
   DIP Switched affect:
    - Frequency - Although this isn't a reliable multiplexing method
@@ -870,7 +870,7 @@ char Transmit(unsigned long Data, char Bits, int Bit_Period, long Signal_Period,
   if(micros() - Time_at_Previous_Transmit < Signal_Period)  {
     return(0);
   }
-  Time_at_Previous_Transmit = micros();
+  Time_at_Previous_Transmit += Signal_Period;                                           // Instead of "= micros();" Improves relative timing accuracy.
 
   char index;  
   int Half_Bit_Period = Bit_Period / 2;   
