@@ -798,67 +798,95 @@ void UsePPM()
   static float Yaw_Setpoint, Drift_Compensation;
   static float JoyStick_Angle, JoyStick_Sq_Magnitude;
 
-  unsigned char Yaw_Setpoint_Tx, Speed_Tx;
-  unsigned long IR_Tx_Data;  
+  unsigned char Yaw_Setpoint_Tx, Speed_Tx, PPM_Demand_Tx;
+  unsigned long IR_Tx_Data; 
+
+  static char PPM_Count = 0;
   
   while(1)
   {
-  /*    
-    for(int i = 0;i <= 5;i++)
-    {
-      Serial.print("   Ch ");
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.print(PPM_Channel.Ch[i]);
-    }
-    Serial.println();   
-  */
-    
-  // -------------------------Channel 1 can be speed, channel 2 yaw rate------------------------------------------------------------------------
-  /*
-  Speed_Tx = map(PPM_Channel.Ch[1], PPM_Channel.Ch_Min[1], PPM_Channel.Ch_Max[1], 0, 255);            
-  Yaw_Setpoint += ((float)map(PPM_Channel.Ch[0], PPM_Channel.Ch_Min[0], PPM_Channel.Ch_Max[0], -1000, 1000) * 0.01);    
-
-  */    
-  // -------------------------Channel 4 can be speed, channel 1 & 2 Yaw_Setpoint----------------------------------------------------------------
-  Speed_Tx = map(PPM_Channel.Ch[2], PPM_Channel.Ch_Min[2], PPM_Channel.Ch_Max[2], 0, 255);
-
-  float Centered_ChX = (float)map(PPM_Channel.Ch[0], PPM_Channel.Ch_Min[0], PPM_Channel.Ch_Max[0], -128, 128);
-  float Centered_ChY = (float)map(PPM_Channel.Ch[1], PPM_Channel.Ch_Min[1], PPM_Channel.Ch_Max[1], -128, 128);
-   
-  JoyStick_Sq_Magnitude = pow(Centered_ChY, 2.0) + pow(Centered_ChX, 2.0);  
-
-  if(JoyStick_Sq_Magnitude > 400.0)
-  {
-    //Yaw_Setpoint -= JoyStick_Angle;                                                   // Remove old values
-    JoyStick_Angle = atan2(Centered_ChX, Centered_ChY) * (180/PI);                                      // Calculate new value
-    Yaw_Setpoint = JoyStick_Angle;                                                      // Add it in
-  }   
+    /*    
+      for(int i = 0;i <= 5;i++)
+      {
+        Serial.print("   Ch ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.print(PPM_Channel.Ch[i]);
+      }
+      Serial.println();   
+    */
+      
+    // -------------------------Channel 1 can be speed, channel 2 yaw rate------------------------------------------------------------------------
+    /*
+    Speed_Tx = map(PPM_Channel.Ch[1], PPM_Channel.Ch_Min[1], PPM_Channel.Ch_Max[1], 0, 255);            
+    Yaw_Setpoint += ((float)map(PPM_Channel.Ch[0], PPM_Channel.Ch_Min[0], PPM_Channel.Ch_Max[0], -1000, 1000) * 0.01);    
   
-  //--------------------------Ensure 0-360 domain-----------------------------------------------------------------------------------------------  
-  while(Yaw_Setpoint >= 360.0)                                                          // Keep Yaw_setpoint within 0-360 limits
-  Yaw_Setpoint -= 360.0;
-  while(Yaw_Setpoint < 0.0)
-  Yaw_Setpoint += 360.0;
-
-  // ---Package for TXing ----------------------------------------------------------------
-  Yaw_Setpoint_Tx = map(int(Yaw_Setpoint), 0, 359, 0, 255);
-
-  Serial.print("Yaw_Setpoint_Tx: ");
-  Serial.print(Yaw_Setpoint_Tx, DEC);
-  Serial.print(", Speed_Tx:");
-  Serial.print(Speed_Tx, DEC);
-
-  IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
-  IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
-  bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet
-
-  Serial.print(", IR_Tx_Data:");
-  Serial.println(IR_Tx_Data, BIN);
-
-  while(!Transmit(IR_Tx_Data, 17, BIT_PERIOD, SIGNAL_PERIOD, digitalRead(DIP_4))) {}    
+    */    
+    // -------------------------Channel 4 can be speed, channel 1 & 2 Yaw_Setpoint----------------------------------------------------------------
+    Speed_Tx = map(PPM_Channel.Ch[2], PPM_Channel.Ch_Min[2], PPM_Channel.Ch_Max[2], 0, 255);
+    PPM_Demand_Tx = map(PPM_Channel.Ch[5], PPM_Channel.Ch_Min[5], PPM_Channel.Ch_Max[5], 0, 255); 
+  
+    float Centered_ChX = (float)map(PPM_Channel.Ch[0], PPM_Channel.Ch_Min[0], PPM_Channel.Ch_Max[0], -128, 128);
+    float Centered_ChY = (float)map(PPM_Channel.Ch[1], PPM_Channel.Ch_Min[1], PPM_Channel.Ch_Max[1], -128, 128);
+     
+    JoyStick_Sq_Magnitude = pow(Centered_ChY, 2.0) + pow(Centered_ChX, 2.0);  
+  
+    if(JoyStick_Sq_Magnitude > 400.0)
+    {
+      //Yaw_Setpoint -= JoyStick_Angle;                                                 // Remove old values
+      JoyStick_Angle = atan2(Centered_ChX, Centered_ChY) * (180/PI);                                      // Calculate new value
+      Yaw_Setpoint = JoyStick_Angle;                                                    // Add it in
+    }   
+    
+    //--------------------------Ensure 0-360 domain-----------------------------------------------------------------------------------------------  
+    while(Yaw_Setpoint >= 360.0)                                                        // Keep Yaw_setpoint within 0-360 limits
+    Yaw_Setpoint -= 360.0;
+    while(Yaw_Setpoint < 0.0)
+    Yaw_Setpoint += 360.0;
+  
+    // ---Package for TXing ----------------------------------------------------------------
+    Yaw_Setpoint_Tx = map(int(Yaw_Setpoint), 0, 359, 0, 255);
+  
+    Serial.print("Yaw_Setpoint_Tx: ");
+    Serial.print(Yaw_Setpoint_Tx, DEC);
+    Serial.print(", Speed_Tx:");
+    Serial.print(Speed_Tx, DEC);
+    Serial.print(", PPM_Demand_Tx:");
+    Serial.print(PPM_Demand_Tx, DEC);
+  
+    if(PPM_Count == 4)
+    {
+      PPM_Count = 0;
+  
+      IR_Tx_Data = ((long)PPM_Demand_Tx & 0xFF) << 24;
+      bitClear(IR_Tx_Data, 15);                                                         // This indicates a Type B Packet
+  
+      Serial.print(", IR_Tx_Data (Type B):");
+      Serial.println(IR_Tx_Data, BIN);
+    }
+    else
+    {
+      PPM_Count++;
+      
+      IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
+      IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
+      bitSet(IR_Tx_Data, 15);                                                           // This indicates a Type A Packet
+    
+      Serial.print(", IR_Tx_Data (Type A):");
+      Serial.println(IR_Tx_Data, BIN);
+    }
+    
+    while(!Transmit(IR_Tx_Data, 17, BIT_PERIOD, SIGNAL_PERIOD, digitalRead(DIP_4))) {}      
   }
 }
+
+
+
+
+
+
+
+
 
 //------------------------------------------------------------------------------------
 char Transmit(unsigned long Data, char Bits, int Bit_Period, long Signal_Period, char Channel)
