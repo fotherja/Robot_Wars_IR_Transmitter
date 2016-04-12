@@ -709,9 +709,16 @@ void loop()
   IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
   IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
   bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet
-    
-  //IR_Tx_Data |= ((PID_Adjust_Buttons & 0b111) << 12);
-  //bitWrite(IR_Tx_Data, 15, bitRead(gc_status.data1, A_BUTTON));
+
+  static char Tx_Count = 0;
+  if(PID_Adjust_Buttons && !Tx_Count)  {
+    Tx_Count = 1;    
+    IR_Tx_Data = ((long)(PID_Adjust_Buttons & 0b111) << 21);
+    bitClear(IR_Tx_Data, 15);
+  }
+  else  {
+    Tx_Count = 0;
+  }
 
   Serial.print(", IR_Tx_Data:");
   Serial.println(IR_Tx_Data, BIN);
