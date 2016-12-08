@@ -5,8 +5,8 @@ Configurable IR transmission frequency and channel.
     
     To Do:
   - LED Feedback, Low battery detection
-  - Allow for transmission of a special packet that sets the PWM output on the GMC. Interrupt based or something 
   - Advanced: Get time division multiplexing working by addition of an IR receiver onto Josh's board.
+  - Areas can be made more efficient! And better code lay out. Use a Tx class etc to improve code readability etc
   - Make rising edge immediate! (like Josh). Use a pin register define instead of digitalWrite/Mode etc
   
   DIP Switched affect:
@@ -158,6 +158,7 @@ void Configure_PPM_Input();
 void UsePPM();
 void Interrupt_Fxn();
 void Print_PPM_Channel_Values();
+float Circularly_Constrain(float _Yaw_setpoint);
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //#####################################################################################################################################################################
@@ -181,12 +182,12 @@ void setup()
   
   // Configure timer to output 38KHz or 56KHz IR pin depending on DIP_3
   if(digitalRead(DIP_3) == 1)  {
-  ICR1 = 210;                                                                           // 38KHz - Freq = Clk / (2 * (ICR1 + 1)   
-  Serial.println("Using 38KHz...");
+    ICR1 = 210;                                                                         // 38KHz - Freq = Clk / (2 * (ICR1 + 1)   
+    Serial.println("Using 38KHz...");
   }  
   else  {
-  ICR1 = 142;                                                                           // 56KHz  
-  Serial.println("Using 56KHz...");
+    ICR1 = 142;                                                                         // 56KHz  
+    Serial.println("Using 56KHz...");
   }    
   TCCR1A = 0b00010000;
   TCCR1B = 0b00011001;  
@@ -600,32 +601,26 @@ void loop()
  *        DATA_1 bits: 0, 0, 0, start, y, x, b, a
  *        DATA_2 bits: 1, L, R, Z, Dup, Ddown, Dright, Dleft
  */
+  char PWM_ON = 50;
+  char PWM_OFF = 1;
+ 
   char PID_Adjust_Buttons;
  
-  static float Yaw_Setpoint, Yaw_Setpoint_CStick, Drift_Compensation;
+  static float Yaw_Setpoint, Drift_Compensation;
   static float JoyStick_Angle, JoyStick_Sq_Magnitude;
    
-  static char Start_Button_Flag;
+  static char Start_Button_Flag, A_Button_Flag, U_Button_Flag;
+  static char PWM_Out, PWM_Out_Last, Orientation_Flag, Orientation_Flag_Last;
   
   float Centred_Stick_x = (float)gc_status.stick_x - (float)zero_x;
   float Centred_Stick_y = (float)gc_status.stick_y - (float)zero_y;
-  float Centred_CStick_x = (float)gc_status.cstick_x - (float)czero_x;
-  float Centred_CStick_y = (float)gc_status.cstick_y - (float)czero_y; 
-//---
-  static float Speed_Offset = 0.0;
-  static float cStick_Contribution;
 //---
   unsigned char Yaw_Setpoint_Tx, Speed_Tx; 
   unsigned long IR_Tx_Data; 
-    
-// ---Button stuff-----------------------------------------------------------------------  
-  // If both triggers are pressed reset the trims
-  if(bitRead(gc_status.data2, L_BUTTON) && bitRead(gc_status.data2, R_BUTTON)) {  
-    Speed_Offset = 0.0;
-    Drift_Compensation = 0.0;
-  }     
 
-  // For PID tuning on the fly and spinner activation. 
+ 
+// ---Button stuff-----------------------------------------------------------------------  
+  // For PID tuning on the fly 
   PID_Adjust_Buttons = 0;
   if(bitRead(gc_status.data1, B_BUTTON))
     PID_Adjust_Buttons = 0b11;
@@ -636,93 +631,104 @@ void loop()
   if(bitRead(gc_status.data2, Z_BUTTON))
     PID_Adjust_Buttons += 0b100;
 
-  // If L/R Buttons are pressed adjust the drift compensation. If U/B Buttons are pressed adjust the drift compensation. 
+  // If L/R Buttons are pressed adjust the drift compensation 
   if(bitRead(gc_status.data2, L_ARROW_BUTTON))  
     Drift_Compensation -= 0.003;            
   if(bitRead(gc_status.data2, R_ARROW_BUTTON))  
-    Drift_Compensation += 0.003; 
-  if(bitRead(gc_status.data2, D_ARROW_BUTTON))  
-    Speed_Offset += 0.1;            
-  if(bitRead(gc_status.data2, U_ARROW_BUTTON))  
-    Speed_Offset -= 0.1;    
+    Drift_Compensation += 0.003;   
 
   // If the start button is pressed re-zero the Joystick 
-  if(bitRead(gc_status.data1, START_BUTTON) && !Start_Button_Flag)
-  {
+  if(bitRead(gc_status.data1, START_BUTTON) && !Start_Button_Flag)  {
     Yaw_Setpoint += JoyStick_Angle;
     Start_Button_Flag = 1;
   }
   else if(!bitRead(gc_status.data1, START_BUTTON)) 
-    Start_Button_Flag = 0;           
+    Start_Button_Flag = 0;
+
+  // If the A button is pressed toggle weapon
+  if(bitRead(gc_status.data1, A_BUTTON) && !A_Button_Flag)  {    
+    if(PWM_Out == PWM_ON)
+      PWM_Out = PWM_OFF;
+    else
+      PWM_Out = PWM_ON;
+      
+    A_Button_Flag = 1;
+  }
+  else if(!bitRead(gc_status.data1, A_BUTTON)) 
+    A_Button_Flag = 0;
+
+  // If Up arrow is pressed flip robot orientation
+  if(bitRead(gc_status.data2, U_ARROW_BUTTON) && !U_Button_Flag) {  
+    if(Orientation_Flag)
+      Orientation_Flag = 0;
+    else
+      Orientation_Flag = 1;
+
+    U_Button_Flag = 1;
+  }   
+  else if(!bitRead(gc_status.data2, U_ARROW_BUTTON)) 
+    U_Button_Flag = 0;
 
 // ---Angle stuff-----------------------------------------------------------------------
   JoyStick_Sq_Magnitude = pow(Centred_Stick_y, 2.0) + pow(Centred_Stick_x, 2.0);
   Yaw_Setpoint += Drift_Compensation;
          
   if(JoyStick_Sq_Magnitude > 600.0)
-  {
+  {    
     Yaw_Setpoint -= JoyStick_Angle;                                                     // Remove old values
-    Yaw_Setpoint -= Yaw_Setpoint_CStick;
-    Yaw_Setpoint_CStick = 0.0;
     JoyStick_Angle = atan2(Centred_Stick_x, Centred_Stick_y) * (180/PI);                // Calculate new value
-    Yaw_Setpoint += JoyStick_Angle;                                                     // Add it in
-
-    if(abs(Centred_CStick_x) >= 5 || abs(Centred_CStick_y) >= 5)  
-      cStick_Contribution = Centred_CStick_y * 2.0;
-    else
-      cStick_Contribution = 0.0;   
+    Yaw_Setpoint += JoyStick_Angle;                                                     // Add it in  
   }
-  else if(abs(Centred_CStick_x) >= 5 || abs(Centred_CStick_y) >= 5) {
-    cStick_Contribution = Centred_CStick_y * 2.0;
 
-    Yaw_Setpoint -= Yaw_Setpoint_CStick;
-    Yaw_Setpoint_CStick += Centred_CStick_x * 0.2;    
-    Yaw_Setpoint += Yaw_Setpoint_CStick;            
-
-    while(Yaw_Setpoint_CStick >= 360.0)                                                 // Keep Yaw_Setpoint_CStick within 0-360 limits
-      Yaw_Setpoint_CStick -= 360.0;  
-    while(Yaw_Setpoint_CStick < 0.0)       
-      Yaw_Setpoint_CStick += 360.0; 
-  } 
-  else
-    cStick_Contribution = 0.0;    
-
-  while(Yaw_Setpoint >= 360.0)                                                          // Keep Yaw_setpoint within 0-360 limits
-    Yaw_Setpoint -= 360.0;  
-  while(Yaw_Setpoint < 0.0)       
-    Yaw_Setpoint += 360.0;  
+  Yaw_Setpoint = Circularly_Constrain(Yaw_Setpoint);
 
 // ---Speed stuff-----------------------------------------------------------------------
-  float Speed = (float)gc_status.right - (float)gc_status.left - Speed_Offset + cStick_Contribution;
+  float Speed = (float)gc_status.right - (float)gc_status.left;
   Speed *= SCLAE_FACTOR;
   Speed += 128.0;
 
 // ---Package for TXing ----------------------------------------------------------------  
-  Yaw_Setpoint_Tx = map(int(Yaw_Setpoint), 0, 359, 0, 255); 
-  Speed_Tx = (unsigned char)constrain(Speed, 0.0, 255.0);
+  // First, do we need to send a type B packet because something has changed that the GMC needs telling about?
+  static char Toggle_Type_AB_Packets = 0;
+  
+  if((PID_Adjust_Buttons || PWM_Out != PWM_Out_Last || Orientation_Flag != Orientation_Flag_Last) && !Toggle_Type_AB_Packets)  {
+    Toggle_Type_AB_Packets = 1; 
+    PWM_Out_Last = PWM_Out;
+    Orientation_Flag_Last = Orientation_Flag;
+        
+    IR_Tx_Data = (((long)PWM_Out & 0xFF) << 24);       
+    IR_Tx_Data |= ((long)(PID_Adjust_Buttons & 0b111) << 21);
+    if(Orientation_Flag)    
+      bitSet(IR_Tx_Data, 18);
+    else
+      bitClear(IR_Tx_Data, 18);
+      
+    bitClear(IR_Tx_Data, 15);                                                             // This indicates a Type B Packet  
+  }
+  else  {
+    Toggle_Type_AB_Packets = 0;
+    
+    if(JoyStick_Sq_Magnitude > 600.0) 
+      Yaw_Setpoint_Tx = map(int(Yaw_Setpoint), 0, 359, 0, 255); 
+    else  
+      Yaw_Setpoint_Tx = 0;
+    
+    Speed_Tx = (unsigned char)constrain(Speed, 0.0, 255.0);
+
+    IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
+    IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
+    bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet        
+  } 
 
   Serial.print("Yaw_Setpoint_Tx: ");
   Serial.print(Yaw_Setpoint_Tx, DEC);
-  Serial.print(", Speed_Tx:");
+  Serial.print(", Speed_Tx: ");
   Serial.print(Speed_Tx, DEC);
-
-  IR_Tx_Data = ((long)Yaw_Setpoint_Tx & 0xFF) << 24;
-  IR_Tx_Data |= (((long)Speed_Tx & 0xFF) << 16);
-  bitSet(IR_Tx_Data, 15);                                                               // This indicates a Type A Packet
-
-  static char Tx_Count = 0;
-  if(PID_Adjust_Buttons && !Tx_Count)  {
-    Tx_Count = 1;    
-    IR_Tx_Data = ((long)(PID_Adjust_Buttons & 0b111) << 21);
-    bitClear(IR_Tx_Data, 15);
-  }
-  else  {
-    Tx_Count = 0;
-  }
+  Serial.print(", Orientation_Flag: ");
+  Serial.print(Orientation_Flag, DEC);
 
   Serial.print(", IR_Tx_Data:");
-  Serial.println(IR_Tx_Data, BIN);
-    
+  Serial.println(IR_Tx_Data, BIN);    
   while(!Transmit(IR_Tx_Data, 17, BIT_PERIOD, SIGNAL_PERIOD, 1)) {}     
 }
 
@@ -815,7 +821,7 @@ void UsePPM()
     /*    
       for(int i = 0;i <= 5;i++)
       {
-        Serial.print("   Ch ");
+        Serial.print(" Ch ");
         Serial.print(i + 1);
         Serial.print(": ");
         Serial.print(PPM_Channel.Ch[i]);
@@ -841,15 +847,12 @@ void UsePPM()
     if(JoyStick_Sq_Magnitude > 400.0)
     {
       //Yaw_Setpoint -= JoyStick_Angle;                                                 // Remove old values
-      JoyStick_Angle = atan2(Centered_ChX, Centered_ChY) * (180/PI);                                      // Calculate new value
+      JoyStick_Angle = atan2(Centered_ChX, Centered_ChY) * (180/PI);                    // Calculate new value
       Yaw_Setpoint = JoyStick_Angle;                                                    // Add it in
     }   
     
     //--------------------------Ensure 0-360 domain-----------------------------------------------------------------------------------------------  
-    while(Yaw_Setpoint >= 360.0)                                                        // Keep Yaw_setpoint within 0-360 limits
-    Yaw_Setpoint -= 360.0;
-    while(Yaw_Setpoint < 0.0)
-    Yaw_Setpoint += 360.0;
+    Yaw_Setpoint = Circularly_Constrain(Yaw_Setpoint);
   
     // ---Package for TXing ----------------------------------------------------------------
     Yaw_Setpoint_Tx = map(int(Yaw_Setpoint), 0, 359, 0, 255);
@@ -946,6 +949,16 @@ char Transmit(unsigned long Data, char Bits, int Bit_Period, long Signal_Period,
 
   pinMode(IR_Pin, INPUT);
   return(1);
+}
+
+float Circularly_Constrain(float _Yaw_setpoint)
+{
+  while(_Yaw_setpoint >= 360.0)                                                   // Keep Inverted_Yaw_setpoint within 0-360 limits
+      _Yaw_setpoint -= 360.0;    
+  while(_Yaw_setpoint < 0.0) 
+      _Yaw_setpoint += 360.0;
+
+  return(_Yaw_setpoint);
 }
 
 
